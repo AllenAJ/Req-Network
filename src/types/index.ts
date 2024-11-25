@@ -22,3 +22,15 @@ export interface RequestSummary {
       ethereum: any;
     }
   }
+  export interface RequestSummary {
+    requestId: string;
+    payee: string;
+    expectedAmount: string;
+    timestamp: number;
+    state: string;
+  }
+  
+  export interface DashboardProps {
+    requests: RequestSummary[];
+    address: string | null;
+  }

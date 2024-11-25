@@ -7,6 +7,8 @@ import { getRequestClient } from '../lib/requestClient';
 import ConnectWallet from '../components/ConnectWallet';
 import RequestsTable from '../components/RequestsTable';
 import type { RequestSummary } from '../types';
+import Dashboard from '../components/AnalyticsDashboard';
+
 
 export default function Home() {
   const [requests, setRequests] = useState<RequestSummary[]>([]);
@@ -75,10 +77,9 @@ export default function Home() {
         </div>
       )}
 
-      <RequestsTable 
-        requests={requests}
-        isLoading={loading}
-      />
+{address && (
+  <Dashboard requests={requests} address={address} />
+)}
     </main>
   );
 }
