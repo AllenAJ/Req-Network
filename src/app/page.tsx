@@ -4,11 +4,9 @@ import { useState, useEffect } from 'react';
 import { providers } from 'ethers';
 import { Types } from '@requestnetwork/request-client.js';
 import { getRequestClient } from '../lib/requestClient';
-import ConnectWallet from '../components/ConnectWallet';
-import RequestsTable from '../components/RequestsTable';
 import type { RequestSummary } from '../types';
 import Dashboard from '../components/AnalyticsDashboard';
-
+import LandingPage from '../components/LandingPage';
 
 export default function Home() {
   const [requests, setRequests] = useState<RequestSummary[]>([]);
@@ -21,12 +19,12 @@ export default function Home() {
     try {
       const provider = new providers.Web3Provider(window.ethereum);
       const requestClient = getRequestClient(provider);
-
+  
       const fetchedRequests = await requestClient.fromIdentity({
         type: Types.Identity.TYPE.ETHEREUM_ADDRESS,
         value: address,
       });
-
+  
       const summaries: RequestSummary[] = fetchedRequests.map((request) => {
         const data = request.getData();
         return {
@@ -35,9 +33,9 @@ export default function Home() {
           expectedAmount: data.expectedAmount.toString(),
           timestamp: data.timestamp,
           state: data.state,
+          currencySymbol: data.currency || 'ETH'
         };
       });
-      console.log(summaries);
       
       setRequests(summaries);
       setError(null);
@@ -59,27 +57,15 @@ export default function Home() {
     }
   }, [address]);
 
+  if (!address) {
+    return <LandingPage onConnect={handleConnect} />;
+  }
+
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">
-        Request Network Analytics (Sepolia)
-      </h1>
-
-      <ConnectWallet 
-        onConnect={handleConnect}
-        isConnected={!!address}
-        address={address || undefined}
-      />
-
-      {error && (
-        <div className="text-red-500 mb-8">
-          {error}
-        </div>
-      )}
-
-{address && (
-  <Dashboard requests={requests} address={address} />
-)}
-    </main>
+    <Dashboard 
+      requests={requests} 
+      address={address} 
+      isLoading={loading} 
+    />
   );
 }
