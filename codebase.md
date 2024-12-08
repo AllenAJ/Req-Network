@@ -2,9 +2,12 @@
 
 ```json
 {
-  "extends": ["next/core-web-vitals", "next/typescript"]
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "warn"
+  }
 }
-
 ```
 
 # .gitignore
@@ -53,6 +56,29 @@ next-env.d.ts
 
 ```
 
+# .vercel/project.json
+
+```json
+{"orgId":"team_KHAELfOHJMd9bgdTf3izvyOL","projectId":"prj_ylI3S5GEZ89vc5Eop1uJvtwbmavd"}
+```
+
+# .vercel/README.txt
+
+```txt
+> Why do I have a folder named ".vercel" in my project?
+The ".vercel" folder is created when you link a directory to a Vercel project.
+
+> What does the "project.json" file contain?
+The "project.json" file contains:
+- The ID of the Vercel project that you linked ("projectId")
+- The ID of the user or team your Vercel project is owned by ("orgId")
+
+> Should I commit the ".vercel" folder?
+No, you should not share the ".vercel" folder with anyone.
+Upon creation, it will be automatically added to your ".gitignore" file.
+
+```
+
 # next-env.d.ts
 
 ```ts
@@ -62,6 +88,19 @@ next-env.d.ts
 // NOTE: This file should not be edited
 // see https://nextjs.org/docs/app/building-your-application/configuring/typescript for more information.
 
+```
+
+# next.config.mjs
+
+```mjs
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+    eslint: {
+      ignoreDuringBuilds: true, // For development only
+    },
+  };
+  
+  export default nextConfig;
 ```
 
 # next.config.ts
@@ -98,8 +137,8 @@ export default nextConfig;
     "jspdf": "^2.5.2",
     "lucide-react": "^0.468.0",
     "next": "15.0.3",
-    "react": "19.0.0-rc-66855b96-20241106",
-    "react-dom": "19.0.0-rc-66855b96-20241106",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",    
     "recharts": "^2.13.3"
   },
   "devDependencies": {
@@ -334,70 +373,32 @@ export default function Home() {
 # src/components/AddressDisplay.tsx
 
 ```tsx
-// src/components/AddressDisplay.tsx
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface AddressDisplayProps {
   address: string;
 }
 
 const AddressDisplay = ({ address }: AddressDisplayProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [showCopied, setShowCopied] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setShowCopied(true);
-      setTimeout(() => setShowCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    copyToClipboard(address);
-  };
-
-  const toggleExpand = () => {
-    setIsExpanded(!isExpanded);
+  const copyToClipboard = async () => {
+    await navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="relative group">
+    <div className="inline-flex items-center gap-2">
+      <span className="font-mono">
+        {`${address.slice(0, 6)}...${address.slice(-4)}`}
+      </span>
       <button
-        onClick={toggleExpand}
-        className="text-white hover:text-blue-400 transition-colors font-mono"
+        onClick={copyToClipboard}
+        className="text-gray-400 hover:text-gray-600 transition-colors"
       >
-        {isExpanded ? address : `${address.slice(0, 8)}...${address.slice(-4)}`}
+        {copied ? '✓' : '📋'}
       </button>
-      
-      <button
-        onClick={handleClick}
-        className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-400"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-      </button>
-      
-      {showCopied && (
-        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded">
-          Copied!
-        </div>
-      )}
     </div>
   );
 };
@@ -416,6 +417,8 @@ import FilterBar from './FilterBar';
 import ExportHandler from './ExportHandler';
 import ReputationSystem from './ReputationSystem';
 import AddressDisplay from './AddressDisplay';
+import RequestDetails from './RequestDetails';
+import { formatTimestamp } from '@/utils/timeFormatter';
 
 interface ExchangeRate {
   ETH: number;
@@ -428,7 +431,7 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
   const [selectedView, setSelectedView] = useState<'invoice' | 'settlement'>('invoice');
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [isLoadingRate, setIsLoadingRate] = useState(true);
-  
+  const [selectedRequest, setSelectedRequest] = useState<RequestSummary | null>(null);
   useEffect(() => {
     const fetchExchangeRate = async () => {
       try {
@@ -546,7 +549,7 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
                 <h1 className="text-2xl font-bold text-white">Request Network Analytics</h1>
                 <ExportHandler requests={requests} address={address} />
               </div>
-
+  
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <input
@@ -559,176 +562,196 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
                 </div>
                 <div className="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
                   <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                  <span className="text-white/80 text-sm">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+                  <span className="text-white/80 text-sm">
+                    {address?.slice(0, 6)}...{address?.slice(-4)}
+                  </span>
                 </div>
               </div>
             </div>
           </header>
-
+  
           <main className="container mx-auto px-4 py-8">
-            <div id="dashboard-content">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Total Requests</h3>
-                  <p className="text-3xl font-bold text-white">{stats.totalRequests}</p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Total Value (ETH)</h3>
-                  <p className="text-3xl font-bold text-white">{stats.totalValueEth.toFixed(2)} ETH</p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Total Value (USD)</h3>
-                  <p className="text-3xl font-bold text-white">
-                    {stats.totalValueUsd ? formatUsdValue(stats.totalValueEth) : 'Loading...'}
-                  </p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Network</h3>
-                  <p className="text-3xl font-bold text-white">Sepolia</p>
-                </div>
-              </div>
-
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                {/* Request Count Chart */}
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h4 className="text-white mb-4">Request Activity</h4>
-                  <div className="h-[300px]">
-                    <LineChart
-                      width={500}
-                      height={300}
-                      data={chartData}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#fff" />
-                      <YAxis stroke="#fff" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: 'none',
-                          borderRadius: '0.5rem',
-                          color: '#fff'
-                        }}
-                      />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="requestCount"
-                        name="Created"
-                        stroke="#60a5fa"
-                        strokeWidth={2}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="paidCount"
-                        name="Paid"
-                        stroke="#34d399"
-                        strokeWidth={2}
-                      />
-                    </LineChart>
+          {selectedRequest ? (
+  <RequestDetails 
+    request={selectedRequest}
+    onBack={() => setSelectedRequest(null)}
+  />
+) : (
+              <div id="dashboard-content">
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Total Requests</h3>
+                    <p className="text-3xl font-bold text-white">{stats.totalRequests}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Total Value (ETH)</h3>
+                    <p className="text-3xl font-bold text-white">{stats.totalValueEth.toFixed(2)} ETH</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Total Value (USD)</h3>
+                    <p className="text-3xl font-bold text-white">
+                      {stats.totalValueUsd ? formatUsdValue(stats.totalValueEth) : 'Loading...'}
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Network</h3>
+                    <p className="text-3xl font-bold text-white">Sepolia</p>
                   </div>
                 </div>
-
-                {/* Value Chart */}
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h4 className="text-white mb-4">Payment Activity</h4>
-                  <div className="h-[300px]">
-                    <BarChart
-                      width={500}
-                      height={300}
-                      data={chartData}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#fff" />
-                      <YAxis stroke="#fff" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: 'none',
-                          borderRadius: '0.5rem',
-                          color: '#fff'
-                        }}
-                        formatter={(value: any) => [`${value.toFixed(2)} ETH`, '']}
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="totalValue"
-                        name="Requested Value"
-                        fill="#60a5fa"
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="paidValue"
-                        name="Paid Value"
-                        fill="#34d399"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
+  
+                {/* Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                  {/* Request Count Chart */}
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h4 className="text-white mb-4">Request Activity</h4>
+                    <div className="h-[300px]">
+                      <LineChart
+                        width={500}
+                        height={300}
+                        data={chartData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="month" stroke="#fff" />
+                        <YAxis stroke="#fff" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            color: '#fff'
+                          }}
+                        />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="requestCount"
+                          name="Created"
+                          stroke="#60a5fa"
+                          strokeWidth={2}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="paidCount"
+                          name="Paid"
+                          stroke="#34d399"
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </div>
+                  </div>
+  
+                  {/* Value Chart */}
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h4 className="text-white mb-4">Payment Activity</h4>
+                    <div className="h-[300px]">
+                      <BarChart
+                        width={500}
+                        height={300}
+                        data={chartData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="month" stroke="#fff" />
+                        <YAxis stroke="#fff" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            color: '#fff'
+                          }}
+                          formatter={(value: any) => [`${value.toFixed(2)} ETH`, '']}
+                        />
+                        <Legend />
+                        <Bar
+                          dataKey="totalValue"
+                          name="Requested Value"
+                          fill="#60a5fa"
+                          radius={[4, 4, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="paidValue"
+                          name="Paid Value"
+                          fill="#34d399"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </div>
+                  </div>
+                </div>
+  
+                <ReputationSystem requests={filteredRequests} address={address} />
+  
+                {/* Requests Table */}
+                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800">
+                  <div className="p-6">
+                    <FilterBar requests={filteredRequests} onFilterChange={setFilteredRequests} />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Request ID</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Payee</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount (ETH)</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount (USD)</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">State</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
+                          <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRequests.map((request) => {
+                          const ethAmount = Number(utils.formatEther(request.expectedAmount));
+                          return (
+                            <tr key={request.requestId} className="border-b border-gray-800/50 hover:bg-white/5">
+                              <td className="px-6 py-4">
+                                <AddressDisplay address={request.requestId} />
+                              </td>
+                              <td className="px-6 py-4">
+                                <AddressDisplay address={request.payee} />
+                              </td>
+                              <td className="px-6 py-4 text-white font-medium">
+                                {ethAmount.toFixed(4)} ETH
+                              </td>
+                              <td className="px-6 py-4 text-white font-medium">
+                                {formatUsdValue(ethAmount)}
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  request.state === 'created' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
+                                }`}>
+                                  {request.state}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-white">
+                                {formatTimestamp(request.timestamp)}
+                              </td>
+                              <td className="px-6 py-4">
+                                <button
+                                  onClick={() => setSelectedRequest(request)}
+                                  className="text-blue-400 hover:text-blue-300 transition-colors"
+                                >
+                                  View Details
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
-              <ReputationSystem requests={filteredRequests} address={address} />            
-              {/* Requests Table */}
-              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800">
-                <div className="p-6">
-                  <FilterBar requests={filteredRequests} onFilterChange={setFilteredRequests} />
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-800">
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Request ID</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Payee</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount (ETH)</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount (USD)</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">State</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-  {filteredRequests.map((request) => {
-    const ethAmount = Number(utils.formatEther(request.expectedAmount));
-    return (
-      <tr key={request.requestId} className="border-b border-gray-800/50 hover:bg-white/5">
-        <td className="px-6 py-4">
-          <AddressDisplay address={request.requestId} />
-        </td>
-        <td className="px-6 py-4">
-          <AddressDisplay address={request.payee} />
-        </td>
-        <td className="px-6 py-4 text-white font-medium">
-          {ethAmount.toFixed(4)} ETH
-        </td>
-        <td className="px-6 py-4 text-white font-medium">
-          {formatUsdValue(ethAmount)}
-        </td>
-        <td className="px-6 py-4">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-            request.state === 'created' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
-          }`}>
-            {request.state}
-          </span>
-        </td>
-        <td className="px-6 py-4 text-white">
-          {new Date(request.timestamp * 1000).toLocaleDateString()}
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            )}
           </main>
         </div>
       )}
     </>
   );
-}
+                      }
 ```
 
 # src/components/ConnectWallet.tsx
@@ -1736,6 +1759,95 @@ const processRequestsForAI = (requests: any[]): PaymentData[] => {
 export default ReputationSystem;
 ```
 
+# src/components/RequestDetails.tsx
+
+```tsx
+import { useState } from 'react';
+import { utils } from 'ethers';
+import { RequestDetailsProps } from '../types';
+import AddressDisplay from './AddressDisplay';
+
+const formatTimestamp = (timestamp: number): string => {
+  return new Date(timestamp * 1000).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    timeZone: 'UTC'
+  });
+};
+
+const RequestDetails = ({ request, onBack }: RequestDetailsProps) => {
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = async () => {
+    await navigator.clipboard.writeText(request.requestId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800 p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={onBack}
+            className="text-white/80 hover:text-white"
+          >
+            ← Back
+          </button>
+          <h2 className="text-xl font-bold text-white">Request Details</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-white font-mono">{request.requestId}</span>
+          <button 
+            onClick={copyToClipboard}
+            className="text-white/60 hover:text-white/80"
+          >
+            {copied ? '✓' : '📋'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 text-white">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white/5 p-4 rounded-lg">
+            <h3 className="text-gray-400 text-sm mb-1">Status</h3>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              request.state === 'created' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
+            }`}>
+              {request.state}
+            </span>
+          </div>
+          <div className="bg-white/5 p-4 rounded-lg">
+            <h3 className="text-gray-400 text-sm mb-1">Network</h3>
+            <p>Sepolia</p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 p-4 rounded-lg">
+          <h3 className="text-gray-400 text-sm mb-2">Payee</h3>
+          <AddressDisplay address={request.payee} />
+        </div>
+
+        <div className="bg-white/5 p-4 rounded-lg">
+          <h3 className="text-gray-400 text-sm mb-2">Expected Amount</h3>
+          <p>{utils.formatEther(request.expectedAmount)} {request.currencySymbol}</p>
+        </div>
+
+        <div className="bg-white/5 p-4 rounded-lg">
+          <h3 className="text-gray-400 text-sm mb-2">Created</h3>
+          <p>{formatTimestamp(request.timestamp)}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default RequestDetails;
+```
+
 # src/components/RequestsTable.tsx
 
 ```tsx
@@ -1971,19 +2083,81 @@ export interface DashboardProps {
     expectedAmount: string;
     timestamp: number;
     state: string;
+    currencySymbol: string;
+  }
+  
+  export interface RequestDetailsProps {
+    request: RequestSummary;
+    onBack: () => void;
   }
   
   export interface DashboardProps {
-  requests: RequestSummary[];
-  address: string | null;
-  isLoading: boolean;
+    requests: RequestSummary[];
+    address: string | null;
+    isLoading: boolean;
+  }
+
+export interface TransactionData {
+  blockNumber: number;
+  timestamp: number;
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  gasUsed: string;
+  gasPrice: string;
 }
+
+export interface RequestDetailsProps {
+  request: RequestSummary;
+  transactionData?: TransactionData;
+  paymentReference?: string;
+  gateway?: string;
+}
+
+
 ```
 
 # src/utils/formatters.ts
 
 ```ts
 
+```
+
+# src/utils/timeFormatter.ts
+
+```ts
+export const formatRelativeTime = (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp * 1000; // Convert timestamp to milliseconds
+    
+    // Convert diff to minutes/hours/days
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+  
+    if (minutes < 60) {
+      return `${minutes}m ago`;
+    } else if (hours < 24) {
+      return `${hours}h ago`;
+    } else if (days < 30) {
+      return `${days}d ago`;
+    } else {
+      const date = new Date(timestamp * 1000);
+      return date.toLocaleDateString();
+    }
+  };
+  
+  export const formatTimestamp = (timestamp: number): string => {
+    return new Date(timestamp * 1000).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      timeZone: 'UTC'
+    }) + ' UTC';
+  };
 ```
 
 # tailwind.config.ts

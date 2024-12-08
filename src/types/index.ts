@@ -35,10 +35,39 @@ export interface DashboardProps {
     expectedAmount: string;
     timestamp: number;
     state: string;
+    currencySymbol: string;
+  }
+  
+  export interface RequestDetailsProps {
+    request: RequestSummary;
+    onBack: () => void;
   }
   
   export interface DashboardProps {
+    requests: RequestSummary[];
+    address: string | null;
+    isLoading: boolean;
+  }
+
+export interface TransactionData {
+  blockNumber: number;
+  timestamp: number;
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  gasUsed: string;
+  gasPrice: string;
+}
+
+export interface RequestDetailsProps {
+  request: RequestSummary;
+  transactionData?: TransactionData;
+  paymentReference?: string;
+  gateway?: string;
+}
+
+export interface PaginatedTableProps {
   requests: RequestSummary[];
-  address: string | null;
-  isLoading: boolean;
+  onRequestSelect: (request: RequestSummary) => void;
 }

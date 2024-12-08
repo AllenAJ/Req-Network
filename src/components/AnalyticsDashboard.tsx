@@ -6,6 +6,9 @@ import FilterBar from './FilterBar';
 import ExportHandler from './ExportHandler';
 import ReputationSystem from './ReputationSystem';
 import AddressDisplay from './AddressDisplay';
+import RequestDetails from './RequestDetails';
+import { formatTimestamp } from '@/utils/timeFormatter';
+import PaginatedTable from './PaginatedTable';
 
 interface ExchangeRate {
   ETH: number;
@@ -18,7 +21,7 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
   const [selectedView, setSelectedView] = useState<'invoice' | 'settlement'>('invoice');
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [isLoadingRate, setIsLoadingRate] = useState(true);
-  
+  const [selectedRequest, setSelectedRequest] = useState<RequestSummary | null>(null);
   useEffect(() => {
     const fetchExchangeRate = async () => {
       try {
@@ -136,7 +139,7 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
                 <h1 className="text-2xl font-bold text-white">Request Network Analytics</h1>
                 <ExportHandler requests={requests} address={address} />
               </div>
-
+  
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <input
@@ -149,173 +152,145 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
                 </div>
                 <div className="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
                   <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                  <span className="text-white/80 text-sm">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
+                  <span className="text-white/80 text-sm">
+                    {address?.slice(0, 6)}...{address?.slice(-4)}
+                  </span>
                 </div>
               </div>
             </div>
           </header>
-
+  
           <main className="container mx-auto px-4 py-8">
-            <div id="dashboard-content">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Total Requests</h3>
-                  <p className="text-3xl font-bold text-white">{stats.totalRequests}</p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Total Value (ETH)</h3>
-                  <p className="text-3xl font-bold text-white">{stats.totalValueEth.toFixed(2)} ETH</p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Total Value (USD)</h3>
-                  <p className="text-3xl font-bold text-white">
-                    {stats.totalValueUsd ? formatUsdValue(stats.totalValueEth) : 'Loading...'}
-                  </p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h3 className="text-gray-400 font-medium mb-2">Network</h3>
-                  <p className="text-3xl font-bold text-white">Sepolia</p>
-                </div>
-              </div>
-
-              {/* Charts */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                {/* Request Count Chart */}
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h4 className="text-white mb-4">Request Activity</h4>
-                  <div className="h-[300px]">
-                    <LineChart
-                      width={500}
-                      height={300}
-                      data={chartData}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#fff" />
-                      <YAxis stroke="#fff" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: 'none',
-                          borderRadius: '0.5rem',
-                          color: '#fff'
-                        }}
-                      />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="requestCount"
-                        name="Created"
-                        stroke="#60a5fa"
-                        strokeWidth={2}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="paidCount"
-                        name="Paid"
-                        stroke="#34d399"
-                        strokeWidth={2}
-                      />
-                    </LineChart>
+          {selectedRequest ? (
+  <RequestDetails 
+    request={selectedRequest}
+    onBack={() => setSelectedRequest(null)}
+  />
+) : (
+              <div id="dashboard-content">
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Total Requests</h3>
+                    <p className="text-3xl font-bold text-white">{stats.totalRequests}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Total Value (ETH)</h3>
+                    <p className="text-3xl font-bold text-white">{stats.totalValueEth.toFixed(2)} ETH</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Total Value (USD)</h3>
+                    <p className="text-3xl font-bold text-white">
+                      {stats.totalValueUsd ? formatUsdValue(stats.totalValueEth) : 'Loading...'}
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h3 className="text-gray-400 font-medium mb-2">Network</h3>
+                    <p className="text-3xl font-bold text-white">Sepolia</p>
                   </div>
                 </div>
-
-                {/* Value Chart */}
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
-                  <h4 className="text-white mb-4">Payment Activity</h4>
-                  <div className="h-[300px]">
-                    <BarChart
-                      width={500}
-                      height={300}
-                      data={chartData}
-                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#fff" />
-                      <YAxis stroke="#fff" />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1f2937',
-                          border: 'none',
-                          borderRadius: '0.5rem',
-                          color: '#fff'
-                        }}
-                        formatter={(value: any) => [`${value.toFixed(2)} ETH`, '']}
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="totalValue"
-                        name="Requested Value"
-                        fill="#60a5fa"
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="paidValue"
-                        name="Paid Value"
-                        fill="#34d399"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
+  
+                {/* Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                  {/* Request Count Chart */}
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h4 className="text-white mb-4">Request Activity</h4>
+                    <div className="h-[300px]">
+                      <LineChart
+                        width={500}
+                        height={300}
+                        data={chartData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="month" stroke="#fff" />
+                        <YAxis stroke="#fff" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            color: '#fff'
+                          }}
+                        />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="requestCount"
+                          name="Created"
+                          stroke="#60a5fa"
+                          strokeWidth={2}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="paidCount"
+                          name="Paid"
+                          stroke="#34d399"
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </div>
+                  </div>
+  
+                  {/* Value Chart */}
+                  <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
+                    <h4 className="text-white mb-4">Payment Activity</h4>
+                    <div className="h-[300px]">
+                      <BarChart
+                        width={500}
+                        height={300}
+                        data={chartData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="month" stroke="#fff" />
+                        <YAxis stroke="#fff" />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: 'none',
+                            borderRadius: '0.5rem',
+                            color: '#fff'
+                          }}
+                          formatter={(value: any) => [`${value.toFixed(2)} ETH`, '']}
+                        />
+                        <Legend />
+                        <Bar
+                          dataKey="totalValue"
+                          name="Requested Value"
+                          fill="#60a5fa"
+                          radius={[4, 4, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="paidValue"
+                          name="Paid Value"
+                          fill="#34d399"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </div>
                   </div>
                 </div>
+  
+                <ReputationSystem requests={filteredRequests} address={address} />
+  
+                {/* Requests Table */}
+{/* Requests Table */}
+<div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800">
+  <div className="p-6">
+    <FilterBar requests={filteredRequests} onFilterChange={setFilteredRequests} />
+  </div>
+  <PaginatedTable 
+  requests={filteredRequests} 
+  onRequestSelect={setSelectedRequest}
+  formatUsdValue={formatUsdValue}
+/>
+</div>
               </div>
-              <ReputationSystem requests={filteredRequests} address={address} />            
-              {/* Requests Table */}
-              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800">
-                <div className="p-6">
-                  <FilterBar requests={filteredRequests} onFilterChange={setFilteredRequests} />
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-800">
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Request ID</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Payee</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount (ETH)</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Amount (USD)</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">State</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-gray-400">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-  {filteredRequests.map((request) => {
-    const ethAmount = Number(utils.formatEther(request.expectedAmount));
-    return (
-      <tr key={request.requestId} className="border-b border-gray-800/50 hover:bg-white/5">
-        <td className="px-6 py-4">
-          <AddressDisplay address={request.requestId} />
-        </td>
-        <td className="px-6 py-4">
-          <AddressDisplay address={request.payee} />
-        </td>
-        <td className="px-6 py-4 text-white font-medium">
-          {ethAmount.toFixed(4)} ETH
-        </td>
-        <td className="px-6 py-4 text-white font-medium">
-          {formatUsdValue(ethAmount)}
-        </td>
-        <td className="px-6 py-4">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-            request.state === 'created' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
-          }`}>
-            {request.state}
-          </span>
-        </td>
-        <td className="px-6 py-4 text-white">
-          {new Date(request.timestamp * 1000).toLocaleDateString()}
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            )}
           </main>
         </div>
       )}
     </>
   );
-}
+                      }
