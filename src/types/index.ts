@@ -71,3 +71,19 @@ export interface PaginatedTableProps {
   requests: RequestSummary[];
   onRequestSelect: (request: RequestSummary) => void;
 }
+
+// Add these to src/types/index.ts
+
+export interface TaxReportProps {
+  requests: RequestSummary[];
+}
+
+export interface TaxReport {
+  startDate: string;
+  endDate: string;
+  totalIncome: string;
+  totalExpenses: string;
+  netIncome: string;
+  taxableIncome: string;
+  taxEstimate: string;
+}
