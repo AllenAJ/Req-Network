@@ -370,6 +370,146 @@ export default function Home() {
 }
 ```
 
+# src/app/tax/page.tsx
+
+```tsx
+// src/app/tax/page.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { providers } from 'ethers';
+import { Types } from '@requestnetwork/request-client.js';
+import { getRequestClient } from '@/lib/requestClient';  // Fixed import path
+import TaxReports from '../../components/TaxReports';  // Fixed import path
+import { RequestSummary } from '@/types';
+import Link from 'next/link';
+
+export default function TaxPage() {
+  const [requests, setRequests] = useState<RequestSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length > 0) {
+            setAddress(accounts[0]);
+          }
+        } catch (err) {
+          console.error('Error checking wallet connection:', err);
+        }
+      }
+    };
+
+    checkConnection();
+  }, []);
+
+  useEffect(() => {
+    if (address) {
+      fetchRequests(address);
+    }
+  }, [address]);
+
+  const fetchRequests = async (address: string) => {
+    setLoading(true);
+    try {
+      const provider = new providers.Web3Provider(window.ethereum);
+      const requestClient = getRequestClient(provider);
+  
+      const fetchedRequests = await requestClient.fromIdentity({
+        type: Types.Identity.TYPE.ETHEREUM_ADDRESS,
+        value: address,
+      });
+  
+      const summaries: RequestSummary[] = fetchedRequests.map((request) => {
+        const data = request.getData();
+        return {
+          requestId: data.requestId,
+          payee: data.payee?.value || 'Unknown',
+          expectedAmount: data.expectedAmount.toString(),
+          timestamp: data.timestamp,
+          state: data.state,
+          currencySymbol: data.currency || 'ETH'
+        };
+      });
+      
+      setRequests(summaries);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching requests:', err);
+      setError('Failed to fetch requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!address) {
+    return (
+      <div className="min-h-screen bg-[#0a051e] flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">Please Connect Your Wallet</h1>
+          <p className="text-gray-400">Connect your wallet to view tax reports</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0a051e]">
+<header className="border-b border-gray-800 bg-[#0a051e]/95 backdrop-blur sticky top-0 z-50">
+  <div className="container mx-auto px-4 py-4">
+    <div className="flex justify-between items-center">
+      <div className="flex items-center gap-4">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
+        >
+          <svg 
+            className="w-5 h-5" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M10 19l-7-7m0 0l7-7m-7 7h18" 
+            />
+          </svg>
+          Back to Dashboard
+        </Link>
+        <h1 className="text-2xl font-bold text-white">Tax Reports</h1>
+      </div>
+      <div className="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
+        <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+        <span className="text-white/80 text-sm">
+          {address?.slice(0, 6)}...{address?.slice(-4)}
+        </span>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <main className="container mx-auto px-4 py-8">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+          </div>
+        ) : error ? (
+          <div className="text-red-500 text-center">{error}</div>
+        ) : (
+          <TaxReports requests={requests} />
+        )}
+      </main>
+    </div>
+  );
+}
+```
+
 # src/components/AddressDisplay.tsx
 
 ```tsx
@@ -410,7 +550,7 @@ export default AddressDisplay;
 
 ```tsx
 import { useState, useEffect, useMemo } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ResponsiveContainer } from 'recharts';
 import { utils } from 'ethers';
 import { DashboardProps, RequestSummary } from '../types';
 import FilterBar from './FilterBar';
@@ -420,6 +560,9 @@ import AddressDisplay from './AddressDisplay';
 import RequestDetails from './RequestDetails';
 import { formatTimestamp } from '@/utils/timeFormatter';
 import PaginatedTable from './PaginatedTable';
+import Link from 'next/link';
+import NavigationBar from './NavigationBar';
+
 
 interface ExchangeRate {
   ETH: number;
@@ -433,6 +576,9 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [isLoadingRate, setIsLoadingRate] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<RequestSummary | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+
+
   useEffect(() => {
     const fetchExchangeRate = async () => {
       try {
@@ -533,6 +679,28 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
     return Object.values(monthlyStats).sort((a: any, b: any) => a.month.localeCompare(b.month));
   }, [filteredByCurrency, exchangeRate]);
 
+  const exportToJSON = () => {
+    const data = {
+      address,
+      exportDate: new Date().toISOString(),
+      requests: requests.map(req => ({
+        ...req,
+        expectedAmount: utils.formatEther(req.expectedAmount),
+        date: new Date(req.timestamp * 1000).toISOString(),
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'request-network-data.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       {isLoading ? (
@@ -544,40 +712,20 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
         </div>
       ) : (
         <div className="min-h-screen bg-[#0a051e]">
-          <header className="border-b border-gray-800 bg-[#0a051e]/95 backdrop-blur sticky top-0 z-50">
-            <div className="container mx-auto px-4 py-4">
-              <div className="flex justify-between items-center mb-8">
-                <h1 className="text-2xl font-bold text-white">Request Network Analytics</h1>
-                <ExportHandler requests={requests} address={address} />
-              </div>
-  
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <input
-                    type="search"
-                    placeholder="Search requests..."
-                    className="bg-gray-900/50 text-white px-4 py-2 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
-                  <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                  <span className="text-white/80 text-sm">
-                    {address?.slice(0, 6)}...{address?.slice(-4)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </header>
-  
+          <NavigationBar 
+            address={address}
+            onExportJSON={exportToJSON}
+            onExportInvoice={() => setShowExportModal(true)}
+            onSearch={setSearchQuery}
+          />
+          
           <main className="container mx-auto px-4 py-8">
-          {selectedRequest ? (
-  <RequestDetails 
-    request={selectedRequest}
-    onBack={() => setSelectedRequest(null)}
-  />
-) : (
+            {selectedRequest ? (
+              <RequestDetails 
+                request={selectedRequest}
+                onBack={() => setSelectedRequest(null)}
+              />
+            ) : (
               <div id="dashboard-content">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -601,105 +749,113 @@ export default function Dashboard({ requests, address, isLoading }: DashboardPro
                   </div>
                 </div>
   
-                {/* Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                 {/* Charts */}
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                   {/* Request Count Chart */}
                   <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
                     <h4 className="text-white mb-4">Request Activity</h4>
                     <div className="h-[300px]">
-                      <LineChart
-                        width={500}
-                        height={300}
-                        data={chartData}
-                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="month" stroke="#fff" />
-                        <YAxis stroke="#fff" />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#1f2937',
-                            border: 'none',
-                            borderRadius: '0.5rem',
-                            color: '#fff'
-                          }}
-                        />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="requestCount"
-                          name="Created"
-                          stroke="#60a5fa"
-                          strokeWidth={2}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="paidCount"
-                          name="Paid"
-                          stroke="#34d399"
-                          strokeWidth={2}
-                        />
-                      </LineChart>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={chartData}
+                          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis dataKey="month" stroke="#fff" />
+                          <YAxis stroke="#fff" />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1f2937',
+                              border: 'none',
+                              borderRadius: '0.5rem',
+                              color: '#fff'
+                            }}
+                          />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="requestCount"
+                            name="Created"
+                            stroke="#60a5fa"
+                            strokeWidth={2}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="paidCount"
+                            name="Paid"
+                            stroke="#34d399"
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
-  
+
                   {/* Value Chart */}
                   <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl p-6 border border-gray-800">
                     <h4 className="text-white mb-4">Payment Activity</h4>
                     <div className="h-[300px]">
-                      <BarChart
-                        width={500}
-                        height={300}
-                        data={chartData}
-                        margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="month" stroke="#fff" />
-                        <YAxis stroke="#fff" />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#1f2937',
-                            border: 'none',
-                            borderRadius: '0.5rem',
-                            color: '#fff'
-                          }}
-                          formatter={(value: any) => [`${value.toFixed(2)} ETH`, '']}
-                        />
-                        <Legend />
-                        <Bar
-                          dataKey="totalValue"
-                          name="Requested Value"
-                          fill="#60a5fa"
-                          radius={[4, 4, 0, 0]}
-                        />
-                        <Bar
-                          dataKey="paidValue"
-                          name="Paid Value"
-                          fill="#34d399"
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </BarChart>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={chartData}
+                          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis dataKey="month" stroke="#fff" />
+                          <YAxis stroke="#fff" />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1f2937',
+                              border: 'none',
+                              borderRadius: '0.5rem',
+                              color: '#fff'
+                            }}
+                            formatter={(value: any) => [`${value.toFixed(2)} ETH`, '']}
+                          />
+                          <Legend />
+                          <Bar
+                            dataKey="totalValue"
+                            name="Requested Value"
+                            fill="#60a5fa"
+                            radius={[4, 4, 0, 0]}
+                          />
+                          <Bar
+                            dataKey="paidValue"
+                            name="Paid Value"
+                            fill="#34d399"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
                 </div>
-  
+
                 <ReputationSystem requests={filteredRequests} address={address} />
-  
+
                 {/* Requests Table */}
-{/* Requests Table */}
-<div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800">
-  <div className="p-6">
-    <FilterBar requests={filteredRequests} onFilterChange={setFilteredRequests} />
-  </div>
-  <PaginatedTable 
-  requests={filteredRequests} 
-  onRequestSelect={setSelectedRequest}
-  formatUsdValue={formatUsdValue}
-/>
-</div>
+                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-2xl border border-gray-800">
+                  <div className="p-6">
+                    <FilterBar requests={filteredRequests} onFilterChange={setFilteredRequests} />
+                  </div>
+                  <PaginatedTable 
+                    requests={filteredRequests} 
+                    onRequestSelect={setSelectedRequest}
+                    formatUsdValue={formatUsdValue}
+                  />
+                </div>
               </div>
             )}
           </main>
+
+          {/* Export Modal */}
+          {showExportModal && (
+            <ExportHandler
+              requests={requests}
+              address={address}
+              onClose={() => setShowExportModal(false)}
+            />
+          )}
         </div>
       )}
     </>
@@ -761,11 +917,13 @@ export default function ConnectWallet({ onConnect, isConnected, address }: Conne
 # src/components/ExportHandler.tsx
 
 ```tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { utils } from 'ethers';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { RequestSummary } from '../types';
+import { Download, FileText, X } from 'lucide-react';
+
 
 // Type definitions
 interface InvoiceItem {
@@ -817,6 +975,8 @@ interface InvoiceData {
 interface ExportHandlerProps {
   requests: RequestSummary[];
   address: string | null;
+  onClose?: () => void;
+
 }
 
 declare global {
@@ -827,7 +987,9 @@ declare global {
 
 const RENDER_DELAY_MS = 3000;
 
-export default function ExportHandler({ requests, address }: ExportHandlerProps) {
+export default function ExportHandler({ requests, address, onClose }: ExportHandlerProps) {
+  const [isInvoiceMenuOpen, setIsInvoiceMenuOpen] = useState(false);
+
   const loadScript = (src: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -1155,37 +1317,84 @@ export default function ExportHandler({ requests, address }: ExportHandlerProps)
     `;
   };
 
+
+   // Modal version
+   if (onClose) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-[#0a051e] border border-gray-800 rounded-xl p-6 max-w-lg w-full mx-4">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-white">Export Invoice</h2>
+            <button 
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+            {requests.map((request) => (
+              <button
+                key={request.requestId}
+                onClick={() => exportToPDF(request)}
+                className="w-full px-4 py-3 text-left bg-gray-900/50 hover:bg-gray-800 transition-colors rounded-lg flex flex-col gap-1"
+              >
+                <span className="text-white font-medium">
+                  {formatRequestId(request.requestId)}
+                </span>
+                <span className="text-gray-400 text-sm">
+                  {utils.formatEther(request.expectedAmount)} {request.currencySymbol}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Inline version
   return (
     <div className="flex gap-4 mt-4">
       <button
         onClick={exportToJSON}
-        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
       >
-        Export to JSON
+        <Download size={16} />
+        <span>Export to JSON</span>
       </button>
       
-      <div className="relative group">
+      <div className="relative">
         <button
-          className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded transition"
+          onClick={() => setIsInvoiceMenuOpen(!isInvoiceMenuOpen)}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
         >
-          Export Invoice
+          <FileText size={16} />
+          <span>Export Invoice</span>
         </button>
-        <div className="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg hidden group-hover:block z-50">
-          {requests.map((request) => (
-          <button
-          key={request.requestId}
-          onClick={() => exportToPDF(request)}
-          className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors flex flex-col gap-1 border-b border-gray-800 last:border-0"
-        >
-          <span className="text-gray-500 text-xs font-mono">
-            {formatRequestId(request.requestId)}
-          </span>
-          {/* <span className="text-gray-500 text-xs font-mono">
-            {request.requestId}
-          </span> */}
-        </button>
-          ))}
-        </div>
+        
+        {isInvoiceMenuOpen && (
+          <div className="absolute left-0 mt-2 w-64 bg-[#0a051e] border border-gray-800 rounded-lg shadow-lg z-50">
+            {requests.map((request) => (
+              <button
+                key={request.requestId}
+                onClick={() => {
+                  exportToPDF(request);
+                  setIsInvoiceMenuOpen(false);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors flex flex-col gap-1 border-b border-gray-800 last:border-0"
+              >
+                <span className="text-white font-medium">
+                  {formatRequestId(request.requestId)}
+                </span>
+                <span className="text-gray-400 text-sm">
+                  {utils.formatEther(request.expectedAmount)} {request.currencySymbol}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1381,6 +1590,109 @@ export default function LandingPage({ onConnect }: LandingPageProps) {
         </div>
       </div>
     </main>
+  );
+}
+```
+
+# src/components/NavigationBar.tsx
+
+```tsx
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { Search, Download, FileText } from 'lucide-react';
+
+interface NavigationBarProps {
+  address: string | null;
+  onExportJSON: () => void;
+  onExportInvoice: () => void;
+  onSearch: (query: string) => void;
+}
+
+export default function NavigationBar({ 
+  address, 
+  onExportJSON, 
+  onExportInvoice,
+  onSearch 
+}: NavigationBarProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    onSearch(query);
+  };
+
+  return (
+    <nav className="border-b border-gray-800 bg-[#0a051e]/95 backdrop-blur sticky top-0 z-50">
+      <div className="container mx-auto px-4">
+        {/* Main navbar content */}
+        <div className="h-16 flex items-center justify-between">
+          {/* Left section */}
+          <div className="flex items-center">
+            <h1 className="text-xl font-bold text-white mr-8">
+              Request Network Analytics
+            </h1>
+            <div className="hidden md:flex space-x-6">
+              <Link 
+                href="/" 
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                Dashboard
+              </Link>
+              <Link 
+                href="/tax" 
+                className="text-white/80 hover:text-white transition-colors"
+              >
+                Tax Reports
+              </Link>
+            </div>
+          </div>
+
+          {/* Right section */}
+          <div className="flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-2">
+              <button
+                onClick={onExportJSON}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+              >
+                <Download size={16} />
+                <span>Export JSON</span>
+              </button>
+              <button
+                onClick={onExportInvoice}
+                className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors"
+              >
+                <FileText size={16} />
+                <span>Export Invoice</span>
+              </button>
+            </div>
+            
+            {address && (
+              <div className="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
+                <div className="h-2 w-2 bg-green-500 rounded-full" />
+                <span className="text-white/80 text-sm">
+                  {address?.slice(0, 6)}...{address?.slice(-4)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Search bar - Separate row */}
+        <div className="py-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="search"
+              placeholder="Search requests..."
+              className="w-full md:w-96 bg-gray-900/50 text-white pl-10 pr-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={searchQuery}
+              onChange={handleSearchChange}
+            />
+          </div>
+        </div>
+      </div>
+    </nav>
   );
 }
 ```
@@ -1978,6 +2290,354 @@ export default function RequestsTable({ requests, isLoading }: RequestsTableProp
 }
 ```
 
+# src/components/TaxReports.tsx
+
+```tsx
+import React, { useState, useMemo } from 'react';
+import { utils } from 'ethers';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { RequestSummary } from '@/types';
+import { PieChart, Pie, Cell, Legend } from 'recharts';
+
+// Inside your TaxReports component, add this tax-focused mock data:
+const categoryData = [
+  { name: 'Business Operations', value: 30 },
+  { name: 'Professional Services', value: 25 },
+  { name: 'Travel & Entertainment', value: 15 },
+  { name: 'Equipment & Software', value: 20 },
+  { name: 'Marketing & Advertising', value: 10 }
+];
+
+const COLORS = ['#60A5FA', '#34D399', '#F87171', '#FBBF24', '#A78BFA'];
+
+interface TaxReportsProps {
+  requests: RequestSummary[];
+}
+
+const TaxReports: React.FC<TaxReportsProps> = ({ requests }) => {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [format, setFormat] = useState('CSV');
+
+  // Calculate financial metrics
+  const financialData = useMemo(() => {
+    const filteredRequests = requests.filter(req => {
+      const timestamp = new Date(req.timestamp * 1000);
+      return (!startDate || timestamp >= new Date(startDate)) &&
+             (!endDate || timestamp <= new Date(endDate));
+    });
+
+    const totalIncome = filteredRequests.reduce((sum, req) => 
+      sum + Number(utils.formatEther(req.expectedAmount)), 0);
+
+    // Simple mock data for expenses (you would replace this with real expense data)
+    const expenses = totalIncome * 0.3; // Mock 30% expenses
+    const netIncome = totalIncome - expenses;
+    
+    return {
+      totalIncome,
+      expenses,
+      netIncome,
+      taxEstimate: netIncome * 0.2 // Mock 20% tax rate
+    };
+  }, [requests, startDate, endDate]);
+
+  // Generate monthly data for the chart
+  const monthlyData = useMemo(() => {
+    const data = [];
+    for (let i = 0; i < 12; i++) {
+      const month = new Date();
+      month.setMonth(month.getMonth() - i);
+      const monthStr = month.toLocaleString('default', { month: 'numeric', year: '2-digit' });
+      
+      const monthRequests = requests.filter(req => {
+        const reqDate = new Date(req.timestamp * 1000);
+        return reqDate.getMonth() === month.getMonth() &&
+               reqDate.getFullYear() === month.getFullYear();
+      });
+
+      const income = monthRequests.reduce((sum, req) => 
+        sum + Number(utils.formatEther(req.expectedAmount)), 0);
+      
+      data.unshift({
+        month: monthStr,
+        income,
+        expenses: income * 0.3 // Mock expenses
+      });
+    }
+    return data;
+  }, [requests]);
+
+  const handleGenerateReport = () => {
+    // Implementation for generating and downloading the report would go here
+    console.log('Generating report...');
+  };
+
+  const handlePreview = () => {
+    // Implementation for previewing the report would go here
+    console.log('Previewing report...');
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Mock Data Notice */}
+      <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
+        <div className="flex items-center gap-2">
+          <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+          <p className="text-yellow-500 font-medium">Prototype Mode</p>
+            <p className="text-yellow-500/80 text-sm">
+              This is a proof of concept using simulated calculations (30% expenses, sample tax rates). 
+              For production use, this would integrate with tax authority APIs and financial data providers 
+              (like Plaid, Codat) to fetch real expense data and apply jurisdiction-specific tax rules.
+            </p>
+          </div>
+        </div>
+      </div>      {/* Report Generation Form */}
+      <div className="bg-gray-900/50 rounded-xl p-6 space-y-4">
+        <h2 className="text-xl font-semibold text-white mb-4">Generate Tax Report</h2>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Start Date</label>
+            <input
+              type="date"
+              className="w-full bg-gray-800 text-white px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">End Date</label>
+            <input
+              type="date"
+              className="w-full bg-gray-800 text-white px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Format</label>
+          <select
+            className="w-full bg-gray-800 text-white px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500"
+            value={format}
+            onChange={(e) => setFormat(e.target.value)}
+          >
+            <option>CSV</option>
+            <option>PDF</option>
+            <option>JSON</option>
+          </select>
+        </div>
+
+        <div className="flex justify-end space-x-4">
+          <button
+            onClick={handlePreview}
+            className="px-4 py-2 text-white bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            Preview
+          </button>
+          <button
+            onClick={handleGenerateReport}
+            className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors"
+          >
+            Generate Report
+          </button>
+        </div>
+      </div>
+
+      {/* Financial Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-6 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-gray-400">Total Income</h3>
+              <p className="text-2xl font-bold text-white mt-1">
+                {financialData.totalIncome.toFixed(2)} ETH
+              </p>
+            </div>
+            <div className="text-blue-400 bg-blue-400/10 p-3 rounded-full">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-sm text-gray-400 mt-2">Current Period</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-6 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-gray-400">Total Expenses</h3>
+              <p className="text-2xl font-bold text-white mt-1">
+                {financialData.expenses.toFixed(2)} ETH
+              </p>
+            </div>
+            <div className="text-red-400 bg-red-400/10 p-3 rounded-full">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Income</span>
+              <span className="text-white">{financialData.totalIncome.toFixed(2)} ETH</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Expenses</span>
+              <span className="text-white">{financialData.expenses.toFixed(2)} ETH</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Net</span>
+              <span className="text-white">{financialData.netIncome.toFixed(2)} ETH</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-6 border border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-gray-400">Net Income</h3>
+              <p className="text-2xl font-bold text-white mt-1">
+                {financialData.netIncome.toFixed(2)} ETH
+              </p>
+            </div>
+            <div className="text-green-400 bg-green-400/10 p-3 rounded-full">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Taxable Income</span>
+              <span className="text-white">{financialData.netIncome.toFixed(2)} ETH</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Deductions</span>
+              <span className="text-white">{(financialData.expenses * 0.5).toFixed(2)} ETH</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Tax Estimate</span>
+              <span className="text-white">{financialData.taxEstimate.toFixed(2)} ETH</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-6 border border-gray-800">
+          <h3 className="text-lg font-semibold text-white mb-4">Monthly Breakdown</h3>
+          <h4 className="text-sm text-gray-400 mb-6">Income vs Expenses</h4>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="month" stroke="#fff" />
+                <YAxis stroke="#fff" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1f2937',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    color: '#fff'
+                  }}
+                />
+                <Line type="monotone" dataKey="income" stroke="#60a5fa" strokeWidth={2} />
+                <Line type="monotone" dataKey="expenses" stroke="#f87171" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-6 border border-gray-800">
+  <h3 className="text-lg font-semibold text-white mb-4">Category Distribution</h3>
+  <h4 className="text-sm text-gray-400 mb-6">Tax Deductible Expenses by Category</h4>
+  <div className="h-[300px]">
+    <ResponsiveContainer width="100%" height="100%">
+      <PieChart>
+        <Pie
+          data={categoryData}
+          cx="50%"
+          cy="50%"
+          innerRadius={60}
+          outerRadius={100}
+          fill="#8884d8"
+          paddingAngle={5}
+          dataKey="value"
+        >
+          {categoryData.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={{
+            backgroundColor: '#1f2937',
+            border: 'none',
+            borderRadius: '0.5rem',
+            color: '#fff'
+          }}
+          formatter={(value: any) => `${value}%`}
+        />
+        <Legend
+          layout="vertical"
+          align="right"
+          verticalAlign="middle"
+          formatter={(value: string) => (
+            <span className="text-white text-sm">{value}</span>
+          )}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  </div>
+  <div className="mt-4 space-y-2">
+    <p className="text-sm text-gray-400">
+      * Sample distribution of tax deductible expenses
+    </p>
+    <ul className="grid grid-cols-2 gap-2 text-sm text-gray-400">
+      <li className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-[#60A5FA]"></span>
+        Business Operations: Office rent, utilities, supplies
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-[#34D399]"></span>
+        Professional Services: Legal, accounting, consulting
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-[#F87171]"></span>
+        Travel & Entertainment: Business trips, client meetings
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-[#FBBF24]"></span>
+        Equipment & Software: Hardware, licenses, subscriptions
+      </li>
+      <li className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-[#A78BFA]"></span>
+        Marketing & Advertising: Promotions, ads, events
+      </li>
+    </ul>
+  </div>
+</div>
+      </div>
+    </div>
+  );
+};
+
+export default TaxReports;
+```
+
+# src/contexts/WalletContext.tsx
+
+```tsx
+
+```
+
 # src/lib/aiSystem.ts
 
 ```ts
@@ -2204,6 +2864,22 @@ export interface RequestDetailsProps {
 export interface PaginatedTableProps {
   requests: RequestSummary[];
   onRequestSelect: (request: RequestSummary) => void;
+}
+
+// Add these to src/types/index.ts
+
+export interface TaxReportProps {
+  requests: RequestSummary[];
+}
+
+export interface TaxReport {
+  startDate: string;
+  endDate: string;
+  totalIncome: string;
+  totalExpenses: string;
+  netIncome: string;
+  taxableIncome: string;
+  taxEstimate: string;
 }
 ```
 

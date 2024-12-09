@@ -1,59 +1,44 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { utils } from 'ethers';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { RequestSummary } from '../types';
+import { Download, FileText, X } from 'lucide-react';
+
 
 // Type definitions
 interface InvoiceItem {
-  name: string;
+  description: string;
   quantity: number;
-  unitPrice: string;
-  discount?: string;
-  tax?: {
-    amount: number;
-  };
-  total: string;
+  unitPrice: number;
+  total: number;
+}
+
+interface InvoiceParty {
+  address: string;
+  businessName?: string;
+  taxId?: string;
 }
 
 interface InvoiceData {
   invoiceNumber: string;
   issuedDate: string;
   dueDate: string;
-  from: {
-    address: string;
-    firstName?: string;
-    lastName?: string;
-    taxRegistration?: string;
-    businessName?: string;
-    streetAddress?: string;
-    city?: string;
-    country?: string;
-  };
-  to: {
-    address: string;
-    firstName?: string;
-    lastName?: string;
-    taxRegistration?: string;
-    businessName?: string;
-    streetAddress?: string;
-    city?: string;
-    country?: string;
-  };
+  from: InvoiceParty;
+  to: InvoiceParty;
   amount: string;
   currency: string;
   status: string;
   network: string;
   paymentChain: string;
-  invoiceCurrency: string;
-  settlementCurrency: string;
   items?: InvoiceItem[];
-  note?: string;
 }
 
 interface ExportHandlerProps {
   requests: RequestSummary[];
   address: string | null;
+  onClose?: () => void;
+
 }
 
 declare global {
@@ -64,7 +49,9 @@ declare global {
 
 const RENDER_DELAY_MS = 3000;
 
-export default function ExportHandler({ requests, address }: ExportHandlerProps) {
+export default function ExportHandler({ requests, address, onClose }: ExportHandlerProps) {
+  const [isInvoiceMenuOpen, setIsInvoiceMenuOpen] = useState(false);
+
   const loadScript = (src: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -113,7 +100,7 @@ export default function ExportHandler({ requests, address }: ExportHandlerProps)
 
   const exportToPDF = async (request: RequestSummary) => {
     await ensureHtml2PdfLoaded();
-    const invoiceData = createInvoiceData(request);
+    const invoiceData = createInvoiceData(request, address);
     const content = generateInvoiceHTML(invoiceData);
 
     const element = document.createElement('div');
@@ -145,284 +132,382 @@ export default function ExportHandler({ requests, address }: ExportHandlerProps)
     }
   };
 
-  const createInvoiceData = (request: RequestSummary): InvoiceData => {
+  const createInvoiceData = (request: RequestSummary, senderAddress: string | null): InvoiceData => {
+    const issuedDate = new Date(request.timestamp * 1000);
+    const dueDate = new Date(issuedDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+  
     return {
       invoiceNumber: request.requestId,
-      issuedDate: new Date(request.timestamp * 1000).toLocaleDateString(),
-      dueDate: new Date(request.timestamp * 1000 + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+      issuedDate: issuedDate.toLocaleDateString(),
+      dueDate: dueDate.toLocaleDateString(),
       from: {
-        address: address || 'Unknown',
-        firstName: '',
-        lastName: '',
-        taxRegistration: '',
-        businessName: '',
-        streetAddress: '',
-        city: '',
-        country: ''
+        address: senderAddress || 'Unknown',
       },
       to: {
         address: request.payee,
-        firstName: '',
-        lastName: '',
-        taxRegistration: '',
-        businessName: '',
-        streetAddress: '',
-        city: '',
-        country: ''
       },
       amount: utils.formatEther(request.expectedAmount),
       currency: request.currencySymbol,
       status: request.state,
       network: 'Sepolia',
       paymentChain: 'Ethereum',
-      invoiceCurrency: request.currencySymbol,
-      settlementCurrency: request.currencySymbol,
-      items: []
     };
   };
 
-  const generateInvoiceHTML = (invoiceData: InvoiceData): string => {
+  const generateInvoiceHTML = (data: InvoiceData): string => {
     return `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Request Network Invoice - ${invoiceData.invoiceNumber}</title>
+          <title>Request Network Invoice #${data.invoiceNumber}</title>
           <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 40px;
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            
+            body {
+              font-family: 'Inter', sans-serif;
               line-height: 1.6;
-              color: #333;
+              color: #1a1a1a;
+              margin: 0;
+              padding: 0;
             }
+            
             .invoice-container {
               max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
+              margin: 40px auto;
+              padding: 40px;
+              background: #ffffff;
+              box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
             }
+            
             .header {
-              text-align: center;
-              margin-bottom: 30px;
-              padding-bottom: 20px;
-              border-bottom: 1px solid #eee;
-            }
-            .header h1 {
-              margin: 0;
-              color: #333;
-              font-size: 28px;
-            }
-            .dates {
               display: flex;
               justify-content: space-between;
-              margin-bottom: 30px;
+              align-items: flex-start;
+              margin-bottom: 48px;
+              padding-bottom: 24px;
+              border-bottom: 1px solid #e5e7eb;
             }
-            .address-container {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 40px;
-              background-color: #FBFBFB;
-              padding: 20px;
-              gap: 40px;
-            }
-            .address-block {
+            
+            .logo-section {
               flex: 1;
             }
-            .address-block h3 {
-              margin: 0 0 10px 0;
-              color: #666;
+            
+            .logo {
+              font-size: 24px;
+              font-weight: 700;
+              color: #2563eb;
+              margin: 0;
             }
+            
+            .invoice-info {
+              text-align: right;
+            }
+            
+            .invoice-number {
+              font-size: 14px;
+              color: #6b7280;
+              margin-bottom: 8px;
+            }
+            
+            .dates {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 24px;
+              margin-bottom: 48px;
+            }
+            
+            .date-group {
+              background: #f9fafb;
+              padding: 16px;
+              border-radius: 8px;
+            }
+            
+            .date-label {
+              font-size: 12px;
+              text-transform: uppercase;
+              color: #6b7280;
+              margin-bottom: 4px;
+            }
+            
+            .date-value {
+              font-size: 16px;
+              font-weight: 600;
+              color: #1f2937;
+            }
+            
+            .address-container {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 48px;
+              margin-bottom: 48px;
+            }
+            
+            .address-block h3 {
+              font-size: 14px;
+              text-transform: uppercase;
+              color: #6b7280;
+              margin-bottom: 12px;
+            }
+            
             .address {
               font-family: monospace;
-              font-size: 12px;
+              font-size: 14px;
+              background: #f9fafb;
+              padding: 12px;
+              border-radius: 6px;
               word-break: break-all;
-              margin: 5px 0;
             }
+            
             .payment-details {
-              margin: 30px 0;
+              background: #f9fafb;
+              padding: 24px;
+              border-radius: 12px;
+              margin-bottom: 48px;
             }
+            
             .amount {
-              font-size: 24px;
-              font-weight: bold;
+              font-size: 32px;
+              font-weight: 700;
               color: #2563eb;
-              margin: 10px 0;
+              margin-bottom: 16px;
             }
+            
             .status-badge {
               display: inline-block;
-              padding: 4px 8px;
-              border-radius: 4px;
+              padding: 6px 12px;
+              border-radius: 9999px;
               font-size: 12px;
-              background: ${invoiceData.status === 'paid' ? '#dcfce7' : '#fee2e2'};
-              color: ${invoiceData.status === 'paid' ? '#166534' : '#991b1b'};
+              font-weight: 500;
             }
+            
+            .status-created {
+              background: #dbeafe;
+              color: #1e40af;
+            }
+            
+            .status-paid {
+              background: #d1fae5;
+              color: #065f46;
+            }
+            
             .network-info {
-              margin-top: 30px;
+              background: #ffffff;
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              overflow: hidden;
             }
-            table {
+            
+            .network-info table {
               width: 100%;
               border-collapse: collapse;
-              margin: 15px 0;
             }
-            th, td {
-              padding: 12px;
+            
+            .network-info th,
+            .network-info td {
+              padding: 12px 16px;
               text-align: left;
-              border: 1px solid #eee;
+              border-bottom: 1px solid #e5e7eb;
             }
-            th {
-              background-color: #f8f8f8;
-              font-weight: 600;
-              color: #666;
+            
+            .network-info th {
+              font-weight: 500;
+              color: #6b7280;
+              background: #f9fafb;
+              width: 30%;
             }
-            .note {
-              margin-top: 30px;
-              padding: 15px;
-              background-color: #f8f8f8;
-              border-radius: 4px;
+            
+            .network-info tr:last-child th,
+            .network-info tr:last-child td {
+              border-bottom: none;
+            }
+            
+            .footer {
+              margin-top: 48px;
+              padding-top: 24px;
+              border-top: 1px solid #e5e7eb;
+              text-align: center;
+              color: #6b7280;
+              font-size: 14px;
             }
           </style>
         </head>
         <body>
           <div class="invoice-container">
             <div class="header">
-              <h1>REQUEST NETWORK INVOICE</h1>
-              <p>Invoice #${invoiceData.invoiceNumber}</p>
+              <div class="logo-section">
+                <h1 class="logo">REQUEST NETWORK</h1>
+              </div>
+              <div class="invoice-info">
+                <div class="invoice-number">Invoice #${data.invoiceNumber.slice(0, 8)}...</div>
+              </div>
             </div>
-
+  
             <div class="dates">
-              <div>
-                <strong>Issued Date:</strong>
-                <p>${invoiceData.issuedDate}</p>
+              <div class="date-group">
+                <div class="date-label">Issue Date</div>
+                <div class="date-value">${data.issuedDate}</div>
               </div>
-              <div>
-                <strong>Payment Due:</strong>
-                <p>${invoiceData.dueDate}</p>
+              <div class="date-group">
+                <div class="date-label">Payment Due</div>
+                <div class="date-value">${data.dueDate}</div>
               </div>
             </div>
-
+  
             <div class="address-container">
               <div class="address-block">
-                <h3>From:</h3>
-                <p class="address">${invoiceData.from.address}</p>
-                ${invoiceData.from.businessName ? `<p>${invoiceData.from.businessName}</p>` : ''}
-                ${invoiceData.from.firstName ? `<p>${invoiceData.from.firstName} ${invoiceData.from.lastName}</p>` : ''}
-                ${invoiceData.from.streetAddress ? `<p>${invoiceData.from.streetAddress}</p>` : ''}
-                ${invoiceData.from.city ? `<p>${invoiceData.from.city}, ${invoiceData.from.country}</p>` : ''}
-                ${invoiceData.from.taxRegistration ? `<p>VAT: ${invoiceData.from.taxRegistration}</p>` : ''}
+                <h3>From</h3>
+                <div class="address">${data.from.address}</div>
+                ${data.from.businessName ? `<p>${data.from.businessName}</p>` : ''}
+                ${data.from.taxId ? `<p>Tax ID: ${data.from.taxId}</p>` : ''}
               </div>
               <div class="address-block">
-                <h3>To:</h3>
-                <p class="address">${invoiceData.to.address}</p>
-                ${invoiceData.to.businessName ? `<p>${invoiceData.to.businessName}</p>` : ''}
-                ${invoiceData.to.firstName ? `<p>${invoiceData.to.firstName} ${invoiceData.to.lastName}</p>` : ''}
-                ${invoiceData.to.streetAddress ? `<p>${invoiceData.to.streetAddress}</p>` : ''}
-                ${invoiceData.to.city ? `<p>${invoiceData.to.city}, ${invoiceData.to.country}</p>` : ''}
-                ${invoiceData.to.taxRegistration ? `<p>VAT: ${invoiceData.to.taxRegistration}</p>` : ''}
+                <h3>To</h3>
+                <div class="address">${data.to.address}</div>
+                ${data.to.businessName ? `<p>${data.to.businessName}</p>` : ''}
+                ${data.to.taxId ? `<p>Tax ID: ${data.to.taxId}</p>` : ''}
               </div>
             </div>
-
+  
             <div class="payment-details">
-              <h3>Payment Details</h3>
-              <p class="amount">${invoiceData.amount} ${invoiceData.currency}</p>
-              <p><strong>Status:</strong> <span class="status-badge">${invoiceData.status}</span></p>
+              <div class="amount">${data.amount} ${data.currency}</div>
+              <span class="status-badge ${data.status === 'paid' ? 'status-paid' : 'status-created'}">
+                ${data.status.toUpperCase()}
+              </span>
             </div>
-
+  
             <div class="network-info">
-              <h3>Network Information</h3>
               <table>
                 <tr>
                   <th>Network</th>
-                  <td>${invoiceData.network}</td>
+                  <td>${data.network}</td>
                 </tr>
                 <tr>
                   <th>Payment Chain</th>
-                  <td>${invoiceData.paymentChain}</td>
+                  <td>Ethereum</td>
                 </tr>
                 <tr>
-                  <th>Invoice Currency</th>
-                  <td>${invoiceData.invoiceCurrency}</td>
-                </tr>
-                <tr>
-                  <th>Settlement Currency</th>
-                  <td>${invoiceData.settlementCurrency}</td>
+                  <th>Currency</th>
+                  <td>${data.currency}</td>
                 </tr>
                 <tr>
                   <th>Request ID</th>
-                  <td>${invoiceData.invoiceNumber}</td>
+                  <td>${data.invoiceNumber}</td>
                 </tr>
               </table>
             </div>
-
-            ${invoiceData.items && invoiceData.items.length > 0 ? `
-              <div class="items-table">
-                <h3>Invoice Items</h3>
-                <table>
+  
+            ${data.items ? `
+              <div class="items-section">
+                <table class="items-table">
                   <thead>
                     <tr>
                       <th>Description</th>
                       <th>Quantity</th>
                       <th>Unit Price</th>
-                      <th>Discount</th>
-                      <th>Tax</th>
-                      <th>Amount</th>
+                      <th>Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${invoiceData.items.map((item: InvoiceItem) => `
+                    ${data.items.map(item => `
                       <tr>
-                        <td>${item.name || '-'}</td>
-                        <td>${item.quantity || '-'}</td>
-                        <td>${item.unitPrice || '-'} ${invoiceData.currency}</td>
-                        <td>${item.discount || '-'}</td>
-                        <td>${item.tax?.amount ? `${item.tax.amount}%` : '-'}</td>
-                        <td>${item.total || '-'} ${invoiceData.currency}</td>
+                        <td>${item.description}</td>
+                        <td>${item.quantity}</td>
+                        <td>${item.unitPrice} ${data.currency}</td>
+                        <td>${item.total} ${data.currency}</td>
                       </tr>
                     `).join('')}
                   </tbody>
                 </table>
               </div>
             ` : ''}
-
-            ${invoiceData.note ? `
-              <div class="note">
-                <h3>Note:</h3>
-                <p>${invoiceData.note}</p>
-              </div>
-            ` : ''}
+  
+            <div class="footer">
+              <p>This invoice was generated through the Request Network Protocol</p>
+            </div>
           </div>
         </body>
       </html>
     `;
   };
 
+
+   // Modal version
+   if (onClose) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-[#0a051e] border border-gray-800 rounded-xl p-6 max-w-lg w-full mx-4">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-white">Export Invoice</h2>
+            <button 
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+            {requests.map((request) => (
+              <button
+                key={request.requestId}
+                onClick={() => exportToPDF(request)}
+                className="w-full px-4 py-3 text-left bg-gray-900/50 hover:bg-gray-800 transition-colors rounded-lg flex flex-col gap-1"
+              >
+                <span className="text-white font-medium">
+                  {formatRequestId(request.requestId)}
+                </span>
+                <span className="text-gray-400 text-sm">
+                  {utils.formatEther(request.expectedAmount)} {request.currencySymbol}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Inline version
   return (
     <div className="flex gap-4 mt-4">
       <button
         onClick={exportToJSON}
-        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
       >
-        Export to JSON
+        <Download size={16} />
+        <span>Export to JSON</span>
       </button>
       
-      <div className="relative group">
+      <div className="relative">
         <button
-          className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded transition"
+          onClick={() => setIsInvoiceMenuOpen(!isInvoiceMenuOpen)}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
         >
-          Export Invoice
+          <FileText size={16} />
+          <span>Export Invoice</span>
         </button>
-        <div className="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg hidden group-hover:block z-50">
-          {requests.map((request) => (
-          <button
-          key={request.requestId}
-          onClick={() => exportToPDF(request)}
-          className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors flex flex-col gap-1 border-b border-gray-800 last:border-0"
-        >
-          <span className="text-gray-500 text-xs font-mono">
-            {formatRequestId(request.requestId)}
-          </span>
-          {/* <span className="text-gray-500 text-xs font-mono">
-            {request.requestId}
-          </span> */}
-        </button>
-          ))}
-        </div>
+        
+        {isInvoiceMenuOpen && (
+          <div className="absolute left-0 mt-2 w-64 bg-[#0a051e] border border-gray-800 rounded-lg shadow-lg z-50">
+            {requests.map((request) => (
+              <button
+                key={request.requestId}
+                onClick={() => {
+                  exportToPDF(request);
+                  setIsInvoiceMenuOpen(false);
+                }}
+                className="w-full px-4 py-3 text-left hover:bg-gray-800 transition-colors flex flex-col gap-1 border-b border-gray-800 last:border-0"
+              >
+                <span className="text-white font-medium">
+                  {formatRequestId(request.requestId)}
+                </span>
+                <span className="text-gray-400 text-sm">
+                  {utils.formatEther(request.expectedAmount)} {request.currencySymbol}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
